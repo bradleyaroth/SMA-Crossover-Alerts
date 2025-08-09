@@ -16,7 +16,7 @@ A professional automated stock analysis tool that monitors any stock ticker agai
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/yourusername/sma-crossover-alerts.git
+git clone https://github.com/bradleyaroth/sma-crossover-alerts.git
 cd sma-crossover-alerts
 ```
 
@@ -296,7 +296,7 @@ python3 main.py --test-api
 ### Setup Development Environment
 ```bash
 # Clone repository
-git clone https://github.com/yourusername/sma-crossover-alerts.git
+git clone https://github.com/bradleyaroth/sma-crossover-alerts.git
 cd sma-crossover-alerts
 
 # Install in development mode
@@ -347,7 +347,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 📞 Support
 
-- **Issues:** [GitHub Issues](https://github.com/yourusername/sma-crossover-alerts/issues)
+- **Issues:** [GitHub Issues](https://github.com/bradleyaroth/sma-crossover-alerts/issues)
 - **Documentation:** This README and inline code comments
 - **Email:** For private inquiries
 
