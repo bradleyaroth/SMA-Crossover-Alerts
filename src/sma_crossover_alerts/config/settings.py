@@ -72,7 +72,7 @@ class EmailSettings(BaseModel):
     smtp_server: str = Field(default="smtp-relay.brevo.com", description="SMTP server hostname")
     smtp_port: int = Field(default=587, ge=1, le=65535, description="SMTP server port")
     username: str = Field(default="no-reply@reliantrack.com", description="SMTP username")
-    password: str = Field(default="xsmtpsib-4e6e261ebfc8eec580ba265048db1b9f610022ef837826fe7756d3ecd0b2c939-ckfMUIBTdm1NwrV8", description="SMTP password")
+    password: str = Field(default="your-smtp-password-here", description="SMTP password")
     use_tls: bool = Field(default=True, description="Use TLS for SMTP")
     from_name: str = Field(default="TQQQ Analysis System", description="Display name for sender")
     from_address: str = Field(default="no-reply@reliantrack.com", description="Email sender address")
@@ -246,7 +246,7 @@ class Settings:
                 smtp_server=self._get_env_or_config('SMTP_SERVER', 'email', 'smtp_server', 'smtp-relay.brevo.com'),
                 smtp_port=int(self._get_env_or_config('SMTP_PORT', 'email', 'smtp_port', '587')),
                 username=self._get_env_or_config('SMTP_USERNAME', 'email', 'username', 'no-reply@reliantrack.com'),
-                password=self._get_env_or_config('SMTP_PASSWORD', 'email', 'password', 'xsmtpsib-4e6e261ebfc8eec580ba265048db1b9f610022ef837826fe7756d3ecd0b2c939-ckfMUIBTdm1NwrV8'),
+                password=self._get_env_or_config('SMTP_PASSWORD', 'email', 'password', 'your-smtp-password-here'),
                 use_tls=self._get_env_or_config('SMTP_USE_TLS', 'email', 'use_tls', 'true').lower() in ('true', '1', 'yes', 'on'),
                 from_name=self._get_env_or_config('EMAIL_FROM_NAME', 'email', 'from_name', 'TQQQ Analysis System'),
                 from_address=self._get_env_or_config('EMAIL_FROM', 'email', 'from_address', 'no-reply@reliantrack.com'),

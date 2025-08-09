@@ -134,7 +134,7 @@ class IntegrationTestConfig:
     @staticmethod
     def get_real_api_key() -> str:
         """Get real API key for integration tests."""
-        return os.getenv('ALPHA_VANTAGE_API_KEY', 'RQX9W2I4AY7JG6LS')
+        return os.getenv('ALPHA_VANTAGE_API_KEY', '0000000000000000')
     
     @staticmethod
     def get_real_smtp_config() -> Dict[str, Any]:
