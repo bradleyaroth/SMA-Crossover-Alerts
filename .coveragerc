@@ -1,0 +1,94 @@
+[run]
+# Coverage configuration for TQQQ Analysis Application
+
+# Source code to measure
+source = src/tqqq_analysis
+
+# Include patterns
+include = 
+    src/tqqq_analysis/*
+    src/tqqq_analysis/**/*
+
+# Exclude patterns
+omit = 
+    */tests/*
+    */test_*
+    */__pycache__/*
+    */.*
+    */venv/*
+    */env/*
+    */build/*
+    */dist/*
+    */docs/*
+    */scripts/*
+    setup.py
+    conftest.py
+
+# Branch coverage
+branch = True
+
+# Parallel processing
+parallel = False
+
+# Data file location
+data_file = .coverage
+
+[report]
+# Reporting options
+precision = 1
+show_missing = True
+skip_covered = False
+skip_empty = False
+
+# Exclude lines from coverage
+exclude_lines =
+    # Have to re-enable the standard pragma
+    pragma: no cover
+    
+    # Don't complain about missing debug-only code:
+    def __repr__
+    if self\.debug
+    
+    # Don't complain if tests don't hit defensive assertion code:
+    raise AssertionError
+    raise NotImplementedError
+    
+    # Don't complain if non-runnable code isn't run:
+    if 0:
+    if __name__ == .__main__.:
+    if TYPE_CHECKING:
+    
+    # Don't complain about abstract methods
+    @(abc\.)?abstractmethod
+    
+    # Don't complain about platform specific code
+    if sys.platform
+    
+    # Don't complain about logging statements
+    logger\.debug
+    logger\.info
+    
+    # Don't complain about pass statements
+    pass
+
+# Ignore errors
+ignore_errors = False
+
+# Sort results
+sort = Cover
+
+[html]
+# HTML report options
+directory = htmlcov
+title = TQQQ Analysis Coverage Report
+show_contexts = True
+
+[xml]
+# XML report options
+output = coverage.xml
+
+[json]
+# JSON report options
+output = coverage.json
+pretty_print = True
+show_contexts = True
