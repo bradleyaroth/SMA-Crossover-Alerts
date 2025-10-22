@@ -107,12 +107,34 @@ class EmailSettings(BaseModel):
         return v.strip()
 
 
+class StrategyThresholds(BaseModel):
+    """Investment strategy threshold configuration - easily editable at top of settings."""
+    
+    # SPY Thresholds (Primary Signal Source)
+    spy_buy_threshold: float = Field(default=4.0, description="SPY % above 200-day SMA to trigger BUY signal")
+    spy_sell_threshold: float = Field(default=-3.0, description="SPY % below 200-day SMA to trigger SELL signal")
+    
+    # QQQ Thresholds (Bubble Protection)
+    qqq_warning_threshold: float = Field(default=30.0, description="QQQ % above 200-day SMA to trigger DELEVERAGE warning")
+    qqq_danger_threshold: float = Field(default=40.0, description="QQQ % above 200-day SMA to trigger EXIT signal")
+
+
 class AnalysisSettings(BaseModel):
     """Analysis configuration settings."""
     
-    symbol: str = Field(default="TQQQ", description="Stock symbol to analyze")
+    # Primary ticker symbols for strategy
+    spy_symbol: str = Field(default="SPY", description="SPY symbol for primary buy/sell signals")
+    qqq_symbol: str = Field(default="QQQ", description="QQQ symbol for bubble protection monitoring")
+    tqqq_symbol: str = Field(default="TQQQ", description="TQQQ symbol for reference display")
+    
+    # Legacy symbol field for backward compatibility
+    symbol: str = Field(default="TQQQ", description="Stock symbol to analyze (legacy)")
+    
     sma_period: int = Field(default=200, ge=1, le=1000, description="SMA period in days")
     max_data_age_days: int = Field(default=5, ge=1, le=30, description="Maximum data age in days")
+    
+    # Strategy thresholds
+    thresholds: StrategyThresholds = Field(default_factory=StrategyThresholds, description="Investment strategy thresholds")
 
 
 class LoggingSettings(BaseModel):
@@ -253,11 +275,23 @@ class Settings:
                 to_addresses=to_addresses
             )
             
+            # Strategy Thresholds
+            thresholds = StrategyThresholds(
+                spy_buy_threshold=float(self._get_env_or_config('SPY_BUY_THRESHOLD', 'strategy', 'spy_buy_threshold', '4.0')),
+                spy_sell_threshold=float(self._get_env_or_config('SPY_SELL_THRESHOLD', 'strategy', 'spy_sell_threshold', '-3.0')),
+                qqq_warning_threshold=float(self._get_env_or_config('QQQ_WARNING_THRESHOLD', 'strategy', 'qqq_warning_threshold', '30.0')),
+                qqq_danger_threshold=float(self._get_env_or_config('QQQ_DANGER_THRESHOLD', 'strategy', 'qqq_danger_threshold', '40.0'))
+            )
+            
             # Analysis Settings
             analysis_settings = AnalysisSettings(
+                spy_symbol=self._get_env_or_config('SPY_SYMBOL', 'analysis', 'spy_symbol', 'SPY'),
+                qqq_symbol=self._get_env_or_config('QQQ_SYMBOL', 'analysis', 'qqq_symbol', 'QQQ'),
+                tqqq_symbol=self._get_env_or_config('TQQQ_SYMBOL', 'analysis', 'tqqq_symbol', 'TQQQ'),
                 symbol=self._get_env_or_config('STOCK_SYMBOL', 'analysis', 'symbol', 'TQQQ'),
                 sma_period=int(self._get_env_or_config('SMA_PERIOD', 'analysis', 'sma_period', '200')),
-                max_data_age_days=int(self._get_env_or_config('MAX_DATA_AGE_DAYS', 'analysis', 'max_data_age_days', '5'))
+                max_data_age_days=int(self._get_env_or_config('MAX_DATA_AGE_DAYS', 'analysis', 'max_data_age_days', '5')),
+                thresholds=thresholds
             )
             
             # Logging Settings
@@ -399,3 +433,40 @@ class Settings:
     def timezone(self) -> str:
         """System timezone."""
         return self._get_env_or_config('TIMEZONE', 'system', 'timezone', 'UTC')
+    
+    # Multi-Ticker Strategy Configuration
+    @property
+    def spy_symbol(self) -> str:
+        """SPY symbol for primary buy/sell signals."""
+        return self.app.analysis.spy_symbol
+    
+    @property
+    def qqq_symbol(self) -> str:
+        """QQQ symbol for bubble protection monitoring."""
+        return self.app.analysis.qqq_symbol
+    
+    @property
+    def tqqq_symbol(self) -> str:
+        """TQQQ symbol for reference display."""
+        return self.app.analysis.tqqq_symbol
+    
+    # Strategy Thresholds
+    @property
+    def spy_buy_threshold(self) -> float:
+        """SPY % above 200-day SMA to trigger BUY signal."""
+        return self.app.analysis.thresholds.spy_buy_threshold
+    
+    @property
+    def spy_sell_threshold(self) -> float:
+        """SPY % below 200-day SMA to trigger SELL signal."""
+        return self.app.analysis.thresholds.spy_sell_threshold
+    
+    @property
+    def qqq_warning_threshold(self) -> float:
+        """QQQ % above 200-day SMA to trigger DELEVERAGE warning."""
+        return self.app.analysis.thresholds.qqq_warning_threshold
+    
+    @property
+    def qqq_danger_threshold(self) -> float:
+        """QQQ % above 200-day SMA to trigger EXIT signal."""
+        return self.app.analysis.thresholds.qqq_danger_threshold

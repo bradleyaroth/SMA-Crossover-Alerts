@@ -25,11 +25,9 @@ class EmailTemplates:
         Returns:
             tuple: (subject, body)
         """
-        # Generate subject
-        status = result.get('status', 'unknown').upper()
-        date_str = result.get('analysis_date', datetime.now().strftime('%Y-%m-%d'))
-        symbol = result.get('symbol', 'TQQQ').upper()
-        subject = f"{symbol} Analysis: {status} 200-Day SMA - {date_str}"
+        # Generate subject - use date from result or current date
+        date_str = result.get('date', result.get('analysis_date', datetime.now().strftime('%Y-%m-%d')))
+        subject = f"TQQQ Strategy: {date_str}"
         
         # Generate body based on format
         if format.lower() == "html":
@@ -74,99 +72,127 @@ class EmailTemplates:
         Returns:
             str: HTML email content
         """
-        # Determine trend signal class for styling
-        status = data.get('status', 'unknown').lower()
-        if status == 'above':
-            trend_class = 'trend-bullish'
-            trend_signal = 'BULLISH'
-        elif status == 'below':
-            trend_class = 'trend-bearish'
-            trend_signal = 'BEARISH'
-        else:
-            trend_class = 'trend-neutral'
-            trend_signal = 'NEUTRAL'
-        
-        # Format data
-        current_price = data.get('current_price', 0)
-        sma_value = data.get('sma_value', 0)
-        percentage_diff = data.get('percentage_difference', 0)
-        message = data.get('message', 'No message available')
-        analysis_date = data.get('analysis_date', datetime.now().strftime('%Y-%m-%d'))
-        symbol = data.get('symbol', 'TQQQ').upper()
+        # Extract data
+        recommendation = data.get('recommendation', 'NO RECOMMENDATION')
+        explanation = data.get('explanation', 'No explanation available')
+        signal_event = data.get('signal_event')
+        date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
         
-        # Create detailed message
-        detailed_message = self.format_analysis_result(data)
+        spy = data.get('spy', {})
+        qqq = data.get('qqq', {})
+        tqqq = data.get('tqqq')
+        
+        # Determine recommendation box color
+        if 'BUY' in recommendation or 'HOLD' in recommendation:
+            rec_color = '#27ae60'
+            rec_bg = '#e8f5e8'
+        elif 'EXIT' in recommendation or 'SELL' in recommendation:
+            rec_color = '#e74c3c'
+            rec_bg = '#fdf2f2'
+        else:
+            rec_color = '#f39c12'
+            rec_bg = '#fff8e1'
+        
+        # Build signal event alert if present
+        signal_alert = ''
+        if signal_event:
+            signal_alert = f"""
+            <div style="background-color: #fff3cd; padding: 12px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #ffc107; font-weight: bold;">
+                {signal_event}
+            </div>
+            """
+        
+        # Build TQQQ section if data is available
+        tqqq_section = ''
+        if tqqq:
+            tqqq_section = f"""
+            <div style="background-color: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 5px; border-left: 4px solid #6c757d;">
+                <h3 style="margin-top: 0; color: #2c3e50;">TQQQ (Reference)</h3>
+                <p style="margin: 5px 0;"><strong>Current Price:</strong> ${tqqq.get('price', 0):.2f}</p>
+            </div>
+            """
         
         template = f"""
 <!DOCTYPE html>
 <html>
 <head>
-    <title>{symbol} Stock Analysis Results</title>
+    <title>TQQQ Strategy Analysis</title>
     <style>
         body {{ font-family: Arial, sans-serif; margin: 20px; background-color: #f9f9f9; }}
-        .container {{ max-width: 600px; margin: 0 auto; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
+        .container {{ max-width: 700px; margin: 0 auto; background-color: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }}
         .header {{ background-color: #2c3e50; color: white; padding: 20px; border-radius: 8px 8px 0 0; text-align: center; }}
         .content {{ padding: 20px; }}
-        .result-box {{ background-color: #e8f5e8; padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #27ae60; }}
-        .data-table {{ width: 100%; border-collapse: collapse; margin: 15px 0; }}
-        .data-table th, .data-table td {{ padding: 10px; text-align: left; border-bottom: 1px solid #ddd; }}
-        .data-table th {{ background-color: #f8f9fa; font-weight: bold; }}
+        .recommendation-box {{ background-color: {rec_bg}; padding: 20px; margin: 15px 0; border-radius: 5px; border-left: 6px solid {rec_color}; text-align: center; }}
+        .recommendation-box h2 {{ margin: 0 0 10px 0; color: {rec_color}; font-size: 24px; }}
+        .ticker-card {{ background-color: #f8f9fa; padding: 15px; margin: 10px 0; border-radius: 5px; }}
+        .ticker-header {{ font-size: 18px; font-weight: bold; margin-bottom: 10px; color: #2c3e50; }}
+        .ticker-data {{ margin: 5px 0; }}
+        .explanation-box {{ background-color: #e3f2fd; padding: 15px; margin: 15px 0; border-radius: 5px; border-left: 4px solid #2196f3; }}
         .footer {{ background-color: #ecf0f1; padding: 15px; border-radius: 0 0 8px 8px; font-size: 12px; color: #7f8c8d; text-align: center; }}
-        .trend-bullish {{ color: #27ae60; font-weight: bold; }}
-        .trend-bearish {{ color: #e74c3c; font-weight: bold; }}
-        .trend-neutral {{ color: #f39c12; font-weight: bold; }}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>{symbol} Stock Analysis</h1>
-            <p>Daily 200-Day SMA Comparison</p>
+            <h1>📊 TQQQ Investment Strategy</h1>
+            <p>Multi-Ticker Analysis Report</p>
         </div>
         
         <div class="content">
-            <div class="result-box">
-                <h2>{message}</h2>
-                <p><strong>Analysis Date:</strong> {analysis_date}</p>
+            <div class="recommendation-box">
+                <h2>📊 CURRENT RECOMMENDATION</h2>
+                <p style="font-size: 20px; font-weight: bold; margin: 10px 0;">{recommendation}</p>
+                <p style="font-size: 14px; color: #666; margin: 5px 0;">Analysis Date: {date}</p>
             </div>
             
-            <table class="data-table">
-                <tr>
-                    <th>Metric</th>
-                    <th>Value</th>
-                </tr>
-                <tr>
-                    <td>Current Closing Price</td>
-                    <td>${current_price:.2f}</td>
-                </tr>
-                <tr>
-                    <td>200-Day Simple Moving Average</td>
-                    <td>${sma_value:.2f}</td>
-                </tr>
-                <tr>
-                    <td>Percentage Difference</td>
-                    <td>{percentage_diff:.2f}%</td>
-                </tr>
-                <tr>
-                    <td>Trend Signal</td>
-                    <td><span class="{trend_class}">{trend_signal}</span></td>
-                </tr>
-            </table>
+            {signal_alert}
             
-            <p><strong>Analysis Summary:</strong></p>
-            <p>{detailed_message}</p>
+            <h3 style="color: #2c3e50; border-bottom: 2px solid #2c3e50; padding-bottom: 5px;">Multi-Ticker Dashboard</h3>
+            
+            <div class="ticker-card">
+                <div class="ticker-header">SPY (Primary Signal)</div>
+                <div class="ticker-data"><strong>Price:</strong> ${spy.get('price', 0):.2f}</div>
+                <div class="ticker-data"><strong>200-day SMA:</strong> ${spy.get('sma', 0):.2f}</div>
+                <div class="ticker-data"><strong>Difference:</strong> <span style="color: {self._get_color_hex(spy.get('color'))}; font-weight: bold;">{spy.get('percentage_diff', 0):+.2f}%</span></div>
+                <div class="ticker-data"><strong>Status:</strong> <span style="color: {self._get_color_hex(spy.get('color'))}; font-weight: bold;">{spy.get('status', 'UNKNOWN')}</span></div>
+            </div>
+            
+            <div class="ticker-card">
+                <div class="ticker-header">QQQ (Bubble Protection)</div>
+                <div class="ticker-data"><strong>Price:</strong> ${qqq.get('price', 0):.2f}</div>
+                <div class="ticker-data"><strong>200-day SMA:</strong> ${qqq.get('sma', 0):.2f}</div>
+                <div class="ticker-data"><strong>Difference:</strong> <span style="color: {self._get_color_hex(qqq.get('color'))}; font-weight: bold;">{qqq.get('percentage_diff', 0):+.2f}%</span></div>
+                <div class="ticker-data"><strong>Status:</strong> <span style="color: {self._get_color_hex(qqq.get('color'))}; font-weight: bold;">{qqq.get('status', 'UNKNOWN')}</span></div>
+            </div>
+            
+            {tqqq_section}
+            
+            <div class="explanation-box">
+                <h3 style="margin-top: 0; color: #1976d2;">📋 Explanation</h3>
+                <p style="margin: 0; line-height: 1.6;">{explanation}</p>
+            </div>
         </div>
         
         <div class="footer">
-            <p>Generated by {symbol} Analysis System at {timestamp}</p>
-            <p>This is an automated analysis for informational purposes only.</p>
+            <p>Generated by TQQQ Strategy Analysis System at {timestamp}</p>
+            <p>This is an automated analysis for informational purposes only. Not financial advice.</p>
         </div>
     </div>
 </body>
 </html>
         """
         return template.strip()
+    
+    def _get_color_hex(self, color: str) -> str:
+        """Convert color name to hex code."""
+        color_map = {
+            'green': '#27ae60',
+            'red': '#e74c3c',
+            'yellow': '#f39c12',
+            'orange': '#fd7e14'
+        }
+        return color_map.get(color, '#6c757d')
     
     def success_text_template(self, data: Dict[str, Any]) -> str:
         """
@@ -178,54 +204,76 @@ class EmailTemplates:
         Returns:
             str: Plain text email content
         """
-        current_price = data.get('current_price', 0)
-        sma_value = data.get('sma_value', 0)
-        percentage_diff = data.get('percentage_difference', 0)
-        status = data.get('status', 'unknown').upper()
-        message = data.get('message', 'No message available')
-        analysis_date = data.get('analysis_date', datetime.now().strftime('%Y-%m-%d'))
-        symbol = data.get('symbol', 'TQQQ').upper()
+        # Extract data
+        recommendation = data.get('recommendation', 'NO RECOMMENDATION')
+        explanation = data.get('explanation', 'No explanation available')
+        signal_event = data.get('signal_event')
+        date = data.get('date', datetime.now().strftime('%Y-%m-%d'))
         timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S UTC')
         
-        # Determine trend signal
-        if status == 'ABOVE':
-            trend_signal = 'BULLISH'
-        elif status == 'BELOW':
-            trend_signal = 'BEARISH'
-        else:
-            trend_signal = 'NEUTRAL'
+        spy = data.get('spy', {})
+        qqq = data.get('qqq', {})
+        tqqq = data.get('tqqq')
         
-        detailed_message = self.format_analysis_result(data)
+        # Build signal event alert if present
+        signal_alert = ''
+        if signal_event:
+            signal_alert = f"""
+{signal_event}
+{'=' * 60}
+
+"""
+        
+        # Build TQQQ section if data is available
+        tqqq_section = ''
+        if tqqq:
+            tqqq_section = f"""
+TQQQ (Reference):
+- Current Price: ${tqqq.get('price', 0):.2f}
+
+"""
         
         template = f"""
-{symbol} STOCK ANALYSIS RESULTS
-===========================
+TQQQ INVESTMENT STRATEGY ANALYSIS
+{'=' * 60}
 
-{message}
+📊 CURRENT RECOMMENDATION: {recommendation}
 
-Analysis Date: {analysis_date}
+Analysis Date: {date}
 
-MARKET DATA:
-- Current Closing Price: ${current_price:.2f}
-- 200-Day Simple Moving Average: ${sma_value:.2f}
-- Percentage Difference: {percentage_diff:.2f}%
-- Trend Signal: {trend_signal}
+{signal_alert}
+MULTI-TICKER DASHBOARD
+{'=' * 60}
 
-ANALYSIS SUMMARY:
-{detailed_message}
+SPY (Primary Signal):
+- Price: ${spy.get('price', 0):.2f} | 200-day SMA: ${spy.get('sma', 0):.2f}
+- Difference: {spy.get('percentage_diff', 0):+.2f}%
+- Status: {spy.get('status', 'UNKNOWN')}
 
-TECHNICAL DETAILS:
-- Data Source: Alpha Vantage API
+QQQ (Bubble Protection):
+- Price: ${qqq.get('price', 0):.2f} | 200-day SMA: ${qqq.get('sma', 0):.2f}
+- Difference: {qqq.get('percentage_diff', 0):+.2f}%
+- Status: {qqq.get('status', 'UNKNOWN')}
+
+{tqqq_section}
+EXPLANATION
+{'=' * 60}
+{explanation}
+
+TECHNICAL DETAILS
+{'=' * 60}
 - Analysis Time: {timestamp}
-- Symbol: {symbol}
-- SMA Period: 200 days
+- Strategy: SPY-based TQQQ with QQQ bubble protection
+- SPY Thresholds: Buy +4%, Sell -3%
+- QQQ Thresholds: Warning 30%, Danger 40%
 
-DISCLAIMER:
+DISCLAIMER
+{'=' * 60}
 This is an automated analysis for informational purposes only.
 Not financial advice. Please consult with a financial advisor.
 
 ---
-Generated by {symbol} Analysis System
+Generated by TQQQ Strategy Analysis System
         """
         return template.strip()
     

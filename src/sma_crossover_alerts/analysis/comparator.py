@@ -1,17 +1,27 @@
 """
-Price comparison module for TQQQ stock analysis.
+Price comparison module for multi-ticker investment strategy analysis.
 
-This module handles the comparison logic between current stock price
-and the 200-day Simple Moving Average, providing analysis results.
+This module handles the comparison logic for SPY-based TQQQ investment strategy
+with QQQ bubble protection monitoring.
 """
 
-from typing import Dict, Any
+from typing import Dict, Any, Optional, Tuple
 import logging
+from datetime import datetime
 from ..utils.exceptions import DataValidationError, TQQQAnalyzerError, EnhancedTQQQAnalysisError
 from ..utils.logging import get_logger, ErrorLogger
 from ..utils.error_handler import ErrorHandler
 
 logger = logging.getLogger(__name__)
+
+
+class InvestmentRecommendation:
+    """Investment recommendation constants."""
+    BUY_HOLD_TQQQ = "BUY/HOLD TQQQ"
+    SELL_DCA_QQQ = "SELL TQQQ, DCA INTO QQQ"
+    DELEVERAGE_QQQ = "DELEVERAGE TO QQQ"
+    EXIT_TO_CASH = "EXIT TO CASH"
+    MAINTAIN_POSITION = "MAINTAIN CURRENT POSITION"
 
 
 class PriceComparator:
@@ -335,3 +345,240 @@ class StockComparator:
             "network_error": "Network connection failed - please check connectivity.",
             "rate_limit": "API rate limit exceeded - please try again later."
         }
+
+
+class MultiTickerAnalyzer:
+    """
+    Multi-ticker investment strategy analyzer.
+    
+    Implements SPY-based buy/sell signals with QQQ bubble protection.
+    """
+    
+    def __init__(self, thresholds: Optional[Dict[str, float]] = None):
+        """
+        Initialize the multi-ticker analyzer.
+        
+        Args:
+            thresholds: Dictionary of threshold values (optional)
+        """
+        self.logger = get_logger(__name__)
+        self.error_logger = ErrorLogger("multi_ticker_analyzer")
+        self.error_handler = ErrorHandler("multi_ticker_analyzer")
+        
+        # Set default thresholds if not provided
+        self.thresholds = thresholds or {
+            'spy_buy': 4.0,
+            'spy_sell': -3.0,
+            'qqq_warning': 30.0,
+            'qqq_danger': 40.0
+        }
+    
+    def analyze_multi_ticker(
+        self,
+        spy_data: Dict[str, Any],
+        qqq_data: Dict[str, Any],
+        tqqq_data: Optional[Dict[str, Any]] = None,
+        date: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Perform complete multi-ticker analysis.
+        
+        Args:
+            spy_data: SPY price and SMA data {'price': float, 'sma': float}
+            qqq_data: QQQ price and SMA data {'price': float, 'sma': float}
+            tqqq_data: Optional TQQQ price and SMA data for reference
+            date: Analysis date
+            
+        Returns:
+            dict: Complete analysis with recommendation
+        """
+        try:
+            if date is None:
+                date = datetime.now().strftime('%Y-%m-%d')
+            
+            # Calculate percentage differences
+            spy_pct = self._calculate_percentage_diff(spy_data['price'], spy_data['sma'])
+            qqq_pct = self._calculate_percentage_diff(qqq_data['price'], qqq_data['sma'])
+            
+            # Determine investment recommendation
+            recommendation, priority, explanation = self._determine_recommendation(spy_pct, qqq_pct)
+            
+            # Check if this is a signal crossing event
+            signal_event = self._detect_signal_crossing(spy_pct, qqq_pct)
+            
+            # Build comprehensive result
+            result = {
+                'date': date,
+                'recommendation': recommendation,
+                'priority': priority,
+                'explanation': explanation,
+                'signal_event': signal_event,
+                'spy': {
+                    'symbol': 'SPY',
+                    'price': spy_data['price'],
+                    'sma': spy_data['sma'],
+                    'percentage_diff': round(spy_pct, 2),
+                    'status': self._get_spy_status(spy_pct),
+                    'color': self._get_spy_color(spy_pct)
+                },
+                'qqq': {
+                    'symbol': 'QQQ',
+                    'price': qqq_data['price'],
+                    'sma': qqq_data['sma'],
+                    'percentage_diff': round(qqq_pct, 2),
+                    'status': self._get_qqq_status(qqq_pct),
+                    'color': self._get_qqq_color(qqq_pct)
+                }
+            }
+            
+            # Add TQQQ data if provided
+            if tqqq_data:
+                tqqq_pct = self._calculate_percentage_diff(tqqq_data['price'], tqqq_data['sma'])
+                result['tqqq'] = {
+                    'symbol': 'TQQQ',
+                    'price': tqqq_data['price'],
+                    'sma': tqqq_data['sma'],
+                    'percentage_diff': round(tqqq_pct, 2)
+                }
+            
+            self.logger.info(
+                f"Multi-ticker analysis complete: {recommendation} | "
+                f"SPY: {spy_pct:+.2f}% | QQQ: {qqq_pct:+.2f}%"
+            )
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Multi-ticker analysis failed: {str(e)}")
+            raise TQQQAnalyzerError(
+                f"Failed to perform multi-ticker analysis: {str(e)}",
+                component="MultiTickerAnalyzer"
+            ) from e
+    
+    def _calculate_percentage_diff(self, price: float, sma: float) -> float:
+        """Calculate percentage difference from SMA."""
+        if sma == 0:
+            raise DataValidationError(
+                "SMA value cannot be zero",
+                field_name="sma",
+                invalid_value="0",
+                component="MultiTickerAnalyzer"
+            )
+        return ((price - sma) / sma) * 100
+    
+    def _determine_recommendation(
+        self,
+        spy_pct: float,
+        qqq_pct: float
+    ) -> Tuple[str, int, str]:
+        """
+        Determine investment recommendation based on priority logic.
+        
+        Returns:
+            tuple: (recommendation, priority_level, explanation)
+        """
+        # Priority 1: QQQ Danger Level (40%+)
+        if qqq_pct >= self.thresholds['qqq_danger']:
+            return (
+                InvestmentRecommendation.EXIT_TO_CASH,
+                1,
+                f"QQQ is {qqq_pct:.2f}% above its 200-day SMA, exceeding the {self.thresholds['qqq_danger']:.0f}% danger threshold. "
+                "This indicates extreme bubble conditions. Exit all positions to cash immediately."
+            )
+        
+        # Priority 2: QQQ Warning Level (30-40%)
+        if qqq_pct >= self.thresholds['qqq_warning']:
+            return (
+                InvestmentRecommendation.DELEVERAGE_QQQ,
+                2,
+                f"QQQ is {qqq_pct:.2f}% above its 200-day SMA, exceeding the {self.thresholds['qqq_warning']:.0f}% warning threshold. "
+                "This indicates elevated bubble risk. Deleverage from TQQQ to QQQ for safety."
+            )
+        
+        # Priority 3: SPY Sell Signal (below -3%)
+        if spy_pct <= self.thresholds['spy_sell']:
+            return (
+                InvestmentRecommendation.SELL_DCA_QQQ,
+                3,
+                f"SPY is {spy_pct:.2f}% below its 200-day SMA, triggering the {self.thresholds['spy_sell']:.0f}% sell threshold. "
+                "Sell TQQQ and dollar-cost average into QQQ over the next 6-12 months."
+            )
+        
+        # Priority 4: SPY Buy Signal (above +4%)
+        if spy_pct >= self.thresholds['spy_buy']:
+            return (
+                InvestmentRecommendation.BUY_HOLD_TQQQ,
+                4,
+                f"SPY is {spy_pct:.2f}% above its 200-day SMA, exceeding the {self.thresholds['spy_buy']:.0f}% buy threshold. "
+                f"QQQ is at {qqq_pct:.2f}% (below {self.thresholds['qqq_warning']:.0f}% warning level). "
+                "Market conditions are favorable for holding TQQQ."
+            )
+        
+        # Default: Neutral Zone
+        return (
+            InvestmentRecommendation.MAINTAIN_POSITION,
+            5,
+            f"SPY is at {spy_pct:.2f}% (between {self.thresholds['spy_sell']:.0f}% and {self.thresholds['spy_buy']:.0f}% thresholds). "
+            f"QQQ is at {qqq_pct:.2f}% (below {self.thresholds['qqq_warning']:.0f}% warning level). "
+            "No action required. Maintain current position."
+        )
+    
+    def _detect_signal_crossing(self, spy_pct: float, qqq_pct: float) -> Optional[str]:
+        """
+        Detect if we're at or near a threshold crossing.
+        
+        Returns:
+            str: Signal event description or None
+        """
+        # Check for threshold crossings (within 0.5% of threshold)
+        tolerance = 0.5
+        
+        if abs(qqq_pct - self.thresholds['qqq_danger']) <= tolerance:
+            return f"⚠️ QQQ APPROACHING {self.thresholds['qqq_danger']:.0f}% DANGER LEVEL"
+        
+        if abs(qqq_pct - self.thresholds['qqq_warning']) <= tolerance:
+            return f"⚠️ QQQ APPROACHING {self.thresholds['qqq_warning']:.0f}% WARNING LEVEL"
+        
+        if abs(spy_pct - self.thresholds['spy_buy']) <= tolerance:
+            return f"📈 SPY NEAR {self.thresholds['spy_buy']:.0f}% BUY THRESHOLD"
+        
+        if abs(spy_pct - self.thresholds['spy_sell']) <= tolerance:
+            return f"📉 SPY NEAR {self.thresholds['spy_sell']:.0f}% SELL THRESHOLD"
+        
+        return None
+    
+    def _get_spy_status(self, spy_pct: float) -> str:
+        """Get SPY status description."""
+        if spy_pct >= self.thresholds['spy_buy']:
+            return f"ABOVE BUY THRESHOLD (+{self.thresholds['spy_buy']:.0f}%)"
+        elif spy_pct <= self.thresholds['spy_sell']:
+            return f"BELOW SELL THRESHOLD ({self.thresholds['spy_sell']:.0f}%)"
+        else:
+            return "IN NEUTRAL ZONE"
+    
+    def _get_spy_color(self, spy_pct: float) -> str:
+        """Get color indicator for SPY."""
+        if spy_pct >= self.thresholds['spy_buy']:
+            return "green"
+        elif spy_pct <= self.thresholds['spy_sell']:
+            return "red"
+        else:
+            return "yellow"
+    
+    def _get_qqq_status(self, qqq_pct: float) -> str:
+        """Get QQQ status description."""
+        if qqq_pct >= self.thresholds['qqq_danger']:
+            return f"DANGER ZONE (>{self.thresholds['qqq_danger']:.0f}%)"
+        elif qqq_pct >= self.thresholds['qqq_warning']:
+            return f"WARNING ZONE ({self.thresholds['qqq_warning']:.0f}-{self.thresholds['qqq_danger']:.0f}%)"
+        else:
+            return "SAFE ZONE"
+    
+    def _get_qqq_color(self, qqq_pct: float) -> str:
+        """Get color indicator for QQQ."""
+        if qqq_pct >= self.thresholds['qqq_danger']:
+            return "red"
+        elif qqq_pct >= self.thresholds['qqq_warning']:
+            return "orange"
+        else:
+            return "green"

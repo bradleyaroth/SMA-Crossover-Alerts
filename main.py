@@ -31,7 +31,7 @@ from sma_crossover_alerts.utils.exceptions import (
 )
 from sma_crossover_alerts.api.client import AlphaVantageClient
 from sma_crossover_alerts.analysis.processor import StockDataProcessor
-from sma_crossover_alerts.analysis.comparator import StockComparator
+from sma_crossover_alerts.analysis.comparator import StockComparator, MultiTickerAnalyzer
 from sma_crossover_alerts.notification.email_sender import EmailSender
 from sma_crossover_alerts.utils.error_handler import ErrorHandler
 
@@ -120,8 +120,17 @@ class SMAAnalyzer:
             # Initialize data processor
             self.processor = StockDataProcessor()
             
-            # Initialize stock comparator
+            # Initialize stock comparator (legacy)
             self.comparator = StockComparator()
+            
+            # Initialize multi-ticker analyzer with thresholds
+            thresholds = {
+                'spy_buy': self.settings.spy_buy_threshold,
+                'spy_sell': self.settings.spy_sell_threshold,
+                'qqq_warning': self.settings.qqq_warning_threshold,
+                'qqq_danger': self.settings.qqq_danger_threshold
+            }
+            self.multi_ticker_analyzer = MultiTickerAnalyzer(thresholds)
             
             # Initialize email sender
             email_config = {
@@ -156,39 +165,34 @@ class SMAAnalyzer:
             bool: True if analysis completed successfully
         """
         try:
-            self.logger.info("Starting SMA crossover analysis workflow")
+            self.logger.info("Starting multi-ticker investment strategy analysis")
             
-            # Step 1: Fetch historical data from API
-            self.logger.info("Fetching historical data from API...")
-            daily_data = await self.fetch_data()
+            # Step 1: Fetch historical data for all tickers
+            self.logger.info("Fetching historical data for SPY, QQQ, and TQQQ...")
+            ticker_data = await self.fetch_data()
             
-            # Step 2: Process data and calculate SMA
-            self.logger.info("Processing data and calculating SMA...")
-            processed_data = self.process_data(daily_data)
+            # Step 2: Process data and calculate SMA for all tickers
+            self.logger.info("Processing data and calculating SMAs...")
+            processed_data = self.process_data(ticker_data)
             
-            # Step 3: Validate data synchronization
-            self.logger.info("Validating data synchronization...")
-            validated_date = self.validate_data(
-                (processed_data['date'], processed_data['price']),
-                (processed_data['date'], processed_data['sma'])
+            # Step 3: Perform multi-ticker analysis
+            self.logger.info("Performing multi-ticker investment analysis...")
+            analysis_result = self.multi_ticker_analyzer.analyze_multi_ticker(
+                spy_data=processed_data['SPY'],
+                qqq_data=processed_data['QQQ'],
+                tqqq_data=processed_data.get('TQQQ'),
+                date=processed_data['SPY']['date']
             )
             
-            # Step 4: Compare price to SMA
-            self.logger.info("Performing price vs SMA analysis...")
-            comparison_result = self.compare_data(
-                processed_data['price'],
-                processed_data['sma'],
-                validated_date
-            )
-            
-            # Step 5: Send email notification (unless dry run)
+            # Step 4: Send email notification (unless dry run)
             if not dry_run:
                 self.logger.info("Sending email notification...")
-                success = await self.send_notification(comparison_result)
+                success = await self.send_notification(analysis_result)
                 if not success:
                     self.logger.warning("Email notification failed, but analysis completed")
             else:
                 self.logger.info("Dry run mode: Skipping email notification")
+                self.logger.info(f"Analysis result: {analysis_result['recommendation']}")
                 success = True
             
             end_time = datetime.now()
@@ -200,60 +204,71 @@ class SMAAnalyzer:
         except Exception as e:
             return self.handle_error(e, "main_workflow")
     
-    async def fetch_data(self) -> Dict[str, Any]:
+    async def fetch_data(self) -> Dict[str, Dict[str, Any]]:
         """
-        Fetch historical daily price data from configured API provider.
+        Fetch historical daily price data for all tickers (SPY, QQQ, TQQQ).
         
         Returns:
-            Dict: Full historical daily price data for manual SMA calculation
+            Dict: Dictionary with ticker symbols as keys and their historical data
         """
         try:
             async with self.api_client:
-                # Single API call with full historical data for SMA calculation
-                daily_data = await self.api_client.fetch_daily_prices(
-                    self.settings.stock_symbol,
-                    output_size="full"  # Changed from "compact" to get full historical data
-                )
+                # Fetch data for all three tickers
+                tickers = {
+                    'SPY': self.settings.spy_symbol,
+                    'QQQ': self.settings.qqq_symbol,
+                    'TQQQ': self.settings.tqqq_symbol
+                }
                 
-                self.logger.info(f"Successfully fetched full historical data for {self.settings.stock_symbol}")
-                return daily_data
+                ticker_data = {}
+                for key, symbol in tickers.items():
+                    self.logger.info(f"Fetching data for {symbol}...")
+                    data = await self.api_client.fetch_daily_prices(
+                        symbol,
+                        output_size="full"
+                    )
+                    ticker_data[key] = data
+                    self.logger.info(f"Successfully fetched data for {symbol}")
+                
+                return ticker_data
                 
         except Exception as e:
             self.logger.error(f"Data fetching failed: {str(e)}")
             raise
     
-    def process_data(self, daily_data: Dict[str, Any]) -> Dict[str, Any]:
+    def process_data(self, ticker_data: Dict[str, Dict[str, Any]]) -> Dict[str, Any]:
         """
-        Process and extract price data and calculate SMA manually.
+        Process and extract price data and calculate SMA for all tickers.
         
         Args:
-            daily_data: Full historical daily price data from API
+            ticker_data: Dictionary with ticker data for SPY, QQQ, TQQQ
             
         Returns:
-            Dict: Processed data with date, price, and calculated sma
+            Dict: Processed data with all ticker information
         """
         try:
-            # Extract current price data
-            price_date, price_value = self.processor.extract_daily_price_data(daily_data)
+            processed = {}
             
-            # Calculate SMA manually from historical data
-            sma_date, sma_value = self.processor.calculate_sma(daily_data, self.settings.sma_period)
+            for ticker_key, daily_data in ticker_data.items():
+                # Extract current price data
+                price_date, price_value = self.processor.extract_daily_price_data(daily_data)
+                
+                # Calculate SMA manually from historical data
+                sma_date, sma_value = self.processor.calculate_sma(daily_data, self.settings.sma_period)
+                
+                # Store processed data for this ticker
+                processed[ticker_key] = {
+                    'date': price_date,
+                    'price': price_value,
+                    'sma': sma_value
+                }
+                
+                self.logger.info(
+                    f"Processed {ticker_key} for {price_date}: "
+                    f"Price=${price_value:.2f}, {self.settings.sma_period}-day SMA=${sma_value:.2f}"
+                )
             
-            # Dates should match since both come from the same dataset
-            if price_date != sma_date:
-                self.logger.warning(f"Date mismatch: price_date={price_date}, sma_date={sma_date}")
-                # This should not happen with single data source, but handle gracefully
-                # Use the price date as primary since it's the most recent data point
-            
-            processed_data = {
-                'date': price_date,  # Use price date as primary
-                'price': price_value,
-                'sma': sma_value,
-                'symbol': self.settings.stock_symbol
-            }
-            
-            self.logger.info(f"Processed data for {price_date}: Price=${price_value:.2f}, {self.settings.sma_period}-day SMA=${sma_value:.2f}")
-            return processed_data
+            return processed
             
         except Exception as e:
             self.logger.error(f"Data processing failed: {str(e)}")
@@ -336,30 +351,34 @@ class SMAAnalyzer:
     
     async def send_notification(self, result: Dict[str, Any]) -> bool:
         """
-        Send email notification with analysis results.
+        Send email notification with multi-ticker analysis results.
         
         Args:
-            result: Analysis result dictionary
+            result: Multi-ticker analysis result dictionary
             
         Returns:
             bool: True if email sent successfully
         """
         try:
-            # Map comparator result to email template format
+            # Prepare email data with multi-ticker information
             email_data = {
-                'current_price': result['closing_price'],  # Map closing_price to current_price
-                'sma_value': result['sma_value'],
-                'status': result['comparison'].lower(),  # Map comparison to status
-                'percentage_difference': result['percentage_difference'],
-                'message': result['message'],
+                'recommendation': result['recommendation'],
+                'explanation': result['explanation'],
+                'signal_event': result.get('signal_event'),
                 'analysis_date': result['date'],
-                'detailed_message': result['detailed_message'],
-                'trend_signal': result['trend_signal'],
-                'symbol': result.get('symbol', 'TQQQ'),
-                'sma_period': result.get('sma_period', 200)
+                'spy': result['spy'],
+                'qqq': result['qqq'],
+                'tqqq': result.get('tqqq'),
+                'sma_period': self.settings.sma_period,
+                'thresholds': {
+                    'spy_buy': self.settings.spy_buy_threshold,
+                    'spy_sell': self.settings.spy_sell_threshold,
+                    'qqq_warning': self.settings.qqq_warning_threshold,
+                    'qqq_danger': self.settings.qqq_danger_threshold
+                }
             }
             
-            # Send analysis result email
+            # Send multi-ticker analysis result email
             success = self.email_sender.send_analysis_result(
                 email_data,
                 self.settings.email_to_addresses
